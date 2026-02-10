@@ -3,7 +3,7 @@ import yfinance as yf
 from datetime import datetime
 
 # --- ここにコピーしたURLを貼り付ける ---
-WEB_APP_URL = https://script.google.com/macros/s/AKfycbySpuJWJ1AvgNcvxN6IHDQog-8GOJtYcj6Pb1cQFUO8jcK6Pg4fRGGnQo1dwzX-pIIb/exec
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbySpuJWJ1AvgNcvxN6IHDQog-8GOJtYcj6Pb1cQFUO8jcK6Pg4fRGGnQo1dwzX-pIIb/exec"
 # ------------------------------------
 
 ASSETS = {
