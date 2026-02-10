@@ -32,12 +32,3 @@ jobs:
 
       - name: スクリプトの実行
         run: python market_runner.py
-
-      - name: 結果をGitHubに保存 (コミット)
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add market_data.csv
-          # 変更がある場合のみコミットする（エラー回避）
-          git commit -m "Update market data: $(date)" || echo "No changes to commit"
-          git push
