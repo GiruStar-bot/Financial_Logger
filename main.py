@@ -14,12 +14,21 @@ INTERVAL_MINUTES = 45
 # 日本時間のタイムゾーン定義 (UTC+9)
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
-# 取得したいティッカー（通貨ペアや株価）
+# --- 指標の追加はこちら ---
+# 形式 -> "スプレッドシートでの表示名": "Yahoo Financeのシンボル"
 TICKERS = {
-    "USD/JPY": "JPY=X",
-    "Nikkei 225": "^N225",
-    "S&P 500": "^GSPC",
-    "Bitcoin": "BTC-USD"
+    "USD/JPY": "JPY=X",          # 為替: ドル円
+    "EUR/JPY": "EURJPY=X",       # 為替: ユーロ円
+    "Nikkei 225": "^N225",       # 指数: 日経平均
+    "TOPIX": "^TPX",             # 指数: TOPIX
+    "S&P 500": "^GSPC",          # 指数: S&P 500
+    "NASDAQ 100": "^NDX",        # 指数: NASDAQ 100
+    "Bitcoin": "BTC-USD",        # 暗号資産: ビットコイン
+    "Ethereum": "ETH-USD",       # 暗号資産: イーサリアム
+    "Gold": "GC=F",              # 商品: 金先物
+    "Crude Oil": "CL=F",         # 商品: 原油先物
+    "Apple": "AAPL",             # 個別株: アップル
+    "NVIDIA": "NVDA",            # 個別株: エヌビディア
 }
 
 def extract_spreadsheet_id(raw_id):
@@ -57,18 +66,15 @@ def should_run(sheet):
             
         last_time_str = col_a[-1]
         try:
-            # スプレッドシートの文字列をパースし、JSTとして扱う
             last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=JST)
         except ValueError:
             print(f"Time check: Could not parse '{last_time_str}'. Running anyway.")
             return True
 
-        # 現在時刻を日本時間で取得
         now = datetime.datetime.now(JST)
         diff = (now - last_time).total_seconds() / 60
         print(f"Time check: Last run was {diff:.1f} minutes ago (JST).")
         
-        # 初回実行時やズレがひどい場合（マイナスなど）は実行させる
         if diff < 0:
             print("Time check: Detected timezone mismatch or future timestamp. Running to reset.")
             return True
@@ -80,10 +86,10 @@ def should_run(sheet):
 
 def get_financial_data():
     results = []
-    # 記録する時刻も日本時間にする
     timestamp = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
     results.append(timestamp)
     
+    print(f"Fetching {len(TICKERS)} indicators...")
     for name, symbol in TICKERS.items():
         try:
             ticker = yf.Ticker(symbol)
@@ -91,11 +97,12 @@ def get_financial_data():
             if not hist.empty:
                 price = hist['Close'].iloc[-1]
                 results.append(round(float(price), 2))
-                print(f"Fetched {name}: {price}")
+                print(f"  OK: {name} -> {price:.2f}")
             else:
                 results.append("N/A")
+                print(f"  NO DATA: {name}")
         except Exception as e:
-            print(f"Failed to fetch {name}: {e}")
+            print(f"  FAILED: {name} ({e})")
             results.append("Error")
             
     return results
