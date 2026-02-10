@@ -1,0 +1,43 @@
+name: Financial Data Logger
+
+on:
+  schedule:
+    # 毎日 日本時間の朝9時から夜23時まで、1時間おきに実行
+    # GitHubはUTC時間なので、JST-9時間の設定が必要
+    # '0 0-14 * * *' は UTC 0:00(JST 9:00) 〜 UTC 14:00(JST 23:00) を意味します
+    - cron: '0 0-14 * * *'
+  
+  # 手動で「Run workflow」ボタンを押してテストできるようにする設定
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリのチェックアウト
+        uses: actions/checkout@v3
+
+      - name: Pythonのセットアップ
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: ライブラリのインストール
+        run: |
+          pip install -r requirements.txt
+
+      - name: スクリプトの実行
+        run: python market_runner.py
+
+      - name: 結果をGitHubに保存 (コミット)
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add market_data.csv
+          # 変更がある場合のみコミットする（エラー回避）
+          git commit -m "Update market data: $(date)" || echo "No changes to commit"
+          git push
