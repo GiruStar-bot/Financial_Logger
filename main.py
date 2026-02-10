@@ -11,6 +11,9 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS")
 RAW_SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID")
 INTERVAL_MINUTES = 45
 
+# 日本時間のタイムゾーン定義 (UTC+9)
+JST = datetime.timezone(datetime.timedelta(hours=9))
+
 # 取得したいティッカー（通貨ペアや株価）
 TICKERS = {
     "USD/JPY": "JPY=X",
@@ -20,18 +23,16 @@ TICKERS = {
 }
 
 def extract_spreadsheet_id(raw_id):
-    """URLが渡された場合でもID部分だけを抜き出す"""
     if not raw_id:
         return None
-    # URL形式(https://docs.google.com/spreadsheets/d/ID/...)からIDを抽出
     match = re.search(r"/d/([a-zA-Z0-9-_]+)", raw_id)
     if match:
         return match.group(1)
-    return raw_id # すでにID形式ならそのまま返す
+    return raw_id
 
 def get_gspread_client():
     if not GOOGLE_CREDENTIALS_JSON:
-        raise ValueError("Error: GOOGLE_CREDENTIALS is not set in GitHub Secrets.")
+        raise ValueError("Error: GOOGLE_CREDENTIALS is not set.")
     
     try:
         creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
@@ -47,33 +48,40 @@ def get_gspread_client():
         raise ValueError(f"Error parsing JSON or authenticating: {e}")
 
 def should_run(sheet):
-    """前回の実行から指定時間が経過しているか確認"""
+    """日本時間（JST）で前回からの経過時間を判定"""
     try:
         col_a = sheet.col_values(1)
         if len(col_a) < 2: 
-            print("Time check: Sheet is empty or header only. Starting first log.")
+            print("Time check: Sheet is empty. Starting first log.")
             return True
             
         last_time_str = col_a[-1]
         try:
-            last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+            # スプレッドシートの文字列をパースし、JSTとして扱う
+            last_time = datetime.datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=JST)
         except ValueError:
-            print(f"Time check: Could not parse date '{last_time_str}'. Running anyway.")
+            print(f"Time check: Could not parse '{last_time_str}'. Running anyway.")
             return True
 
-        now = datetime.datetime.now()
+        # 現在時刻を日本時間で取得
+        now = datetime.datetime.now(JST)
         diff = (now - last_time).total_seconds() / 60
-        print(f"Time check: Last run was {diff:.1f} minutes ago.")
+        print(f"Time check: Last run was {diff:.1f} minutes ago (JST).")
         
+        # 初回実行時やズレがひどい場合（マイナスなど）は実行させる
+        if diff < 0:
+            print("Time check: Detected timezone mismatch or future timestamp. Running to reset.")
+            return True
+
         return diff >= (INTERVAL_MINUTES - 2)
     except Exception as e:
         print(f"Time check error (ignored): {e}")
         return True
 
 def get_financial_data():
-    """yfinanceを使用してデータを取得。失敗しても止まらないようにする"""
     results = []
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 記録する時刻も日本時間にする
+    timestamp = datetime.datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
     results.append(timestamp)
     
     for name, symbol in TICKERS.items():
@@ -85,7 +93,6 @@ def get_financial_data():
                 results.append(round(float(price), 2))
                 print(f"Fetched {name}: {price}")
             else:
-                print(f"No data for {name}")
                 results.append("N/A")
         except Exception as e:
             print(f"Failed to fetch {name}: {e}")
@@ -96,7 +103,7 @@ def get_financial_data():
 def main():
     spreadsheet_id = extract_spreadsheet_id(RAW_SPREADSHEET_ID)
     if not spreadsheet_id:
-        raise ValueError("Error: SPREADSHEET_ID is missing from GitHub Secrets.")
+        raise ValueError("Error: SPREADSHEET_ID is missing.")
 
     try:
         print("--- Step 1: Authentication ---")
@@ -106,7 +113,7 @@ def main():
         sh = client.open_by_key(spreadsheet_id)
         worksheet = sh.get_worksheet(0)
 
-        print("--- Step 3: Check Interval ---")
+        print("--- Step 3: Check Interval (JST Based) ---")
         if not should_run(worksheet):
             print("Skipping: Interval of 45 minutes not yet reached.")
             return
@@ -116,14 +123,10 @@ def main():
         
         print("--- Step 5: Record to Spreadsheet ---")
         worksheet.append_row(data_row)
-        print(f"Success! Recorded: {data_row}")
+        print(f"Success! Recorded at JST: {data_row[0]}")
 
     except gspread.exceptions.PermissionError:
-        print("\n[!] ERROR: Permission Denied.")
-        print("Please share your Google Sheet with the service account email shown in Step 1.")
-    except gspread.exceptions.SpreadsheetNotFound:
-        print("\n[!] ERROR: Spreadsheet not found.")
-        print(f"Double check your ID: {spreadsheet_id}")
+        print("\n[!] ERROR: Permission Denied. Share the sheet with the email in Step 1.")
     except Exception as e:
         print(f"\n[!] UNEXPECTED ERROR: {e}")
         raise
